@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+backend/.env
+frontend/.env
+
+# Google Cloud credentials
+backend/credentials/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
+
+# Uploads
+backend/uploads/
+
+# Test files
+backend/testGemini.js
+backend/testVision.js
+
+# Tesseract trained data
+backend/eng.traineddata
+backend/hin.traineddata

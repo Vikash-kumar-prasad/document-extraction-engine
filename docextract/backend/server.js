@@ -9,30 +9,54 @@ import path from "path";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-dotenv.config({ path: path.join(__dirname, ".env") });
+// Load Environment Variables
+dotenv.config({
+  path: path.join(__dirname, ".env"),
+});
 
-console.log("API KEY LOADED:", process.env.GROQ_API_KEY ? "✅ Found" : "❌ Missing");
+// Debug Logs
+console.log(
+  "GROQ API:",
+  process.env.GROQ_API_KEY ? "✅ Loaded" : "❌ Missing"
+);
+
+console.log(
+  "GEMINI API:",
+  process.env.GEMINI_API_KEY ? "✅ Loaded" : "❌ Missing"
+);
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 
+// Routes
 app.use("/api", extractRoutes);
 
+// Health Check
 app.get("/", (req, res) => {
-  res.json({ status: "DocExtract API is running" });
+  res.json({
+    success: true,
+    message: "🚀 DocExtract API is running",
+  });
 });
 
+// MongoDB Connection
 mongoose
-  .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/docextract")
+  .connect(
+    process.env.MONGODB_URI || "mongodb://localhost:27017/docextract"
+  )
   .then(() => {
     console.log("✅ Connected to MongoDB");
+
     app.listen(PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
+      console.log(`🚀 Server running at http://localhost:${PORT}`);
     });
   })
   .catch((err) => {
-    console.error("❌ MongoDB connection error:", err.message);
+    console.error("❌ MongoDB Connection Failed");
+    console.error(err.message);
     process.exit(1);
   });

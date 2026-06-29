@@ -13,7 +13,7 @@ const router = express.Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Multer config — store files temporarily in /uploads
+// Store uploaded files temporarily
 const storage = multer.diskStorage({
   destination: path.join(__dirname, "../uploads"),
   filename: (req, file, cb) => {
@@ -23,25 +23,53 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10 MB
+  },
   fileFilter: (req, file, cb) => {
-    const allowed = ["application/pdf", "text/plain"];
-    if (allowed.includes(file.mimetype)) cb(null, true);
-    else cb(new Error("Only PDF and plain text files are allowed."));
+    const allowed = [
+      "application/pdf",
+      "text/plain",
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/webp",
+    ];
+
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(
+        new Error(
+          "Only PDF, TXT, JPG, JPEG, PNG and WEBP files are allowed."
+        )
+      );
+    }
   },
 });
 
 // Routes
 router.post("/extract", upload.single("file"), handleExtract);
+
 router.get("/extractions", listExtractions);
+
 router.get("/extractions/:id", getExtraction);
 
-// Multer error handler
+// Error handler
 router.use((err, req, res, next) => {
-  if (err instanceof multer.MulterError || err.message) {
-    return res.status(400).json({ error: err.message });
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({
+      error: err.message,
+    });
   }
-  next(err);
+
+  if (err) {
+    return res.status(400).json({
+      error: err.message,
+    });
+  }
+
+  next();
 });
 
 export default router;

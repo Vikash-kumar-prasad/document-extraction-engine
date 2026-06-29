@@ -1,58 +1,88 @@
 import fs from "fs";
-import path from "path";
 import { extractText } from "../services/pdfParser.js";
 import { extractWithLLM } from "../services/llmService.js";
 import { verifyConfidence } from "../services/confidenceService.js";
 import { SCHEMAS } from "../validators/schemas.js";
 import Extraction from "../models/Extraction.js";
 
-const SUPPORTED_TYPES = ["application/pdf", "text/plain"];
+// Supported file types
+const SUPPORTED_TYPES = [
+  "application/pdf",
+  "text/plain",
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+];
 
 // ── POST /api/extract ─────────────────────────────────────────────────────────
 export async function handleExtract(req, res) {
   if (!req.file) {
-    return res.status(400).json({ error: "No file uploaded." });
+    return res.status(400).json({
+      error: "No file uploaded.",
+    });
   }
 
   const { documentType } = req.body;
+
   if (!documentType || !SCHEMAS[documentType]) {
     return res.status(400).json({
-      error: `Invalid document type. Choose from: ${Object.keys(SCHEMAS).join(", ")}`,
+      error: `Invalid document type. Choose from: ${Object.keys(
+        SCHEMAS
+      ).join(", ")}`,
     });
   }
 
   if (!SUPPORTED_TYPES.includes(req.file.mimetype)) {
     fs.unlinkSync(req.file.path);
+
     return res.status(415).json({
-      error: `Unsupported file type: ${req.file.mimetype}. Upload a PDF or plain text file.`,
+      error: `Unsupported file type: ${req.file.mimetype}. Upload a PDF, TXT, JPG, JPEG, PNG or WEBP file.`,
     });
   }
 
   let rawText = "";
+
   try {
     rawText = await extractText(req.file.path, req.file.mimetype);
+
+    console.log("\n======================================");
+    console.log("📝 OCR EXTRACTED TEXT");
+    console.log("======================================");
+    console.log(rawText);
+    console.log("======================================\n");
   } catch (err) {
     fs.unlinkSync(req.file.path);
-    return res.status(422).json({ error: `Text extraction failed: ${err.message}` });
+
+    return res.status(422).json({
+      error: `Text extraction failed: ${err.message}`,
+    });
   }
 
   if (!rawText || rawText.length < 20) {
     fs.unlinkSync(req.file.path);
-    return res.status(422).json({ error: "Document appears to be empty or unreadable." });
+
+    return res.status(422).json({
+      error: "Document appears to be empty or unreadable.",
+    });
   }
 
   let llmResult;
+
   try {
     llmResult = await extractWithLLM(documentType, rawText);
   } catch (err) {
     fs.unlinkSync(req.file.path);
-    return res.status(502).json({ error: `LLM extraction failed: ${err.message}` });
+
+    return res.status(502).json({
+      error: `LLM extraction failed: ${err.message}`,
+    });
   }
 
-  // Dual-layer confidence verification
+  // Verify confidence
   const verifiedResult = verifyConfidence(llmResult, rawText);
 
-  // Zod validation
+  // Validate using Zod
   const schema = SCHEMAS[documentType];
   const parsed = schema.safeParse(verifiedResult);
 
@@ -60,12 +90,13 @@ export async function handleExtract(req, res) {
   let status = "success";
 
   if (!parsed.success) {
-    // Partial result — some fields failed schema validation
     status = "partial";
-    // Merge valid fields with nulled-out invalid fields
+
     finalResult = { ...verifiedResult };
+
     for (const issue of parsed.error.issues) {
       const fieldName = issue.path[0];
+
       if (fieldName) {
         finalResult[fieldName] = {
           value: null,
@@ -76,7 +107,7 @@ export async function handleExtract(req, res) {
     }
   }
 
-  // Save to MongoDB
+  // Save extraction
   const extraction = new Extraction({
     filename: req.file.originalname,
     documentType,
@@ -89,7 +120,7 @@ export async function handleExtract(req, res) {
 
   await extraction.save();
 
-  // Clean up uploaded file
+  // Delete uploaded file
   fs.unlinkSync(req.file.path);
 
   return res.status(201).json({
@@ -98,6 +129,7 @@ export async function handleExtract(req, res) {
     documentType,
     status,
     result: finalResult,
+    rawText, // Helpful for debugging
     createdAt: extraction.createdAt,
   });
 }
@@ -106,7 +138,13 @@ export async function handleExtract(req, res) {
 export async function listExtractions(req, res) {
   const extractions = await Extraction.find(
     {},
-    { filename: 1, documentType: 1, status: 1, createdAt: 1, fileSize: 1 }
+    {
+      filename: 1,
+      documentType: 1,
+      status: 1,
+      createdAt: 1,
+      fileSize: 1,
+    }
   ).sort({ createdAt: -1 });
 
   return res.json(extractions);
@@ -115,8 +153,12 @@ export async function listExtractions(req, res) {
 // ── GET /api/extractions/:id ──────────────────────────────────────────────────
 export async function getExtraction(req, res) {
   const extraction = await Extraction.findById(req.params.id);
+
   if (!extraction) {
-    return res.status(404).json({ error: "Extraction not found." });
+    return res.status(404).json({
+      error: "Extraction not found.",
+    });
   }
+
   return res.json(extraction);
 }
