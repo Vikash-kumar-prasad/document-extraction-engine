@@ -77,17 +77,36 @@ ${rawText}
 Return only the JSON object:`;
 }
 
-export async function extractWithLLM(docType, rawText) {
-  const client = getClient();
+// Groq deprecated llama-3.3-70b-versatile on 2026-06-17. Primary + fallback
+// so a future deprecation doesn't silently break extraction again.
+const PRIMARY_MODEL = "openai/gpt-oss-120b";
+const FALLBACK_MODEL = "qwen/qwen3.6-27b";
 
+async function callGroq(client, model, docType, rawText) {
   const completion = await client.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
+    model,
     messages: [{ role: "user", content: buildPrompt(docType, rawText) }],
     temperature: 0.1,
     max_tokens: 2000,
   });
 
-  const responseText = completion.choices[0].message.content;
+  return completion.choices[0].message.content;
+}
+
+export async function extractWithLLM(docType, rawText) {
+  const client = getClient();
+
+  let responseText;
+  try {
+    responseText = await callGroq(client, PRIMARY_MODEL, docType, rawText);
+  } catch (err) {
+    // If the primary model is unavailable/deprecated/rate-limited, retry once with the fallback.
+    if (err?.status === 404 || err?.status === 400 || err?.status === 429) {
+      responseText = await callGroq(client, FALLBACK_MODEL, docType, rawText);
+    } else {
+      throw err;
+    }
+  }
 
   const cleaned = responseText
     .replace(/```json\n?/g, "")
